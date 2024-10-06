@@ -1,93 +1,170 @@
-import React, { useState, useEffect } from 'react';
-import Web3 from 'web3';
-import MinimalFoodSupplyChain from '../build/contracts/MinimalFoodSupplyChain.json'; // Assuming the ABI and contract address are in this JSON
+import React, { useEffect, useState } from "react";
+import Web3 from "web3";
+import detectEthereumProvider from "@metamask/detect-provider";
+import MinimalFoodSupplyChain from "../build/contracts/MinimalFoodSupplyChain.json"; // Import the ABI JSON
 
 function App() {
-  const [account, setAccount] = useState('');
+  const [account, setAccount] = useState(null);
   const [contract, setContract] = useState(null);
-  const [foodItems, setFoodItems] = useState([]);
-  const [foodItemName, setFoodItemName] = useState('');
-  const [foodItemCount, setFoodItemCount] = useState(0);
+  const [productId, setProductId] = useState("");
+  const [name, setName] = useState("");
+  const [quantity, setQuantity] = useState(0);
+  const [status, setStatus] = useState("");
+  const [productDetails, setProductDetails] = useState(null);
+  const [statusHistory, setStatusHistory] = useState([]);
 
   useEffect(() => {
-    loadWeb3();
-    loadBlockchainData();
+    const init = async () => {
+      const provider = await detectEthereumProvider();
+      if (provider) {
+        const web3 = new Web3(provider);
+        const accounts = await web3.eth.requestAccounts();
+
+        // Contract ABI and Address from JSON file
+        const networkId = await web3.eth.net.getId();
+        const deployedNetwork = MinimalFoodSupplyChain.networks[networkId];
+        const instance = new web3.eth.Contract(
+          MinimalFoodSupplyChain.abi,
+          deployedNetwork && deployedNetwork.address
+        );
+
+        setAccount(accounts[0]);
+        setContract(instance);
+      } else {
+        console.error("Please install MetaMask!");
+      }
+    };
+    init();
   }, []);
 
-  // Load web3 instance and account
-  const loadWeb3 = async () => {
-    if (window.ethereum) {
-      window.web3 = new Web3(window.ethereum);
-      await window.ethereum.request({ method: 'eth_requestAccounts' });
-    } else if (window.web3) {
-      window.web3 = new Web3(window.web3.currentProvider);
-    } else {
-      alert('Non-Ethereum browser detected. You should consider trying MetaMask!');
-    }
-  };
-
-  // Load account and contract details
-  const loadBlockchainData = async () => {
-    const web3 = window.web3;
-    const accounts = await web3.eth.getAccounts();
-    setAccount(accounts[0]);
-
-    // Network ID (Ganache is usually 5777)
-    const networkId = await web3.eth.net.getId();
-    const networkData = MinimalFoodSupplyChain.networks[networkId];
-    if (networkData) {
-      const abi = MinimalFoodSupplyChain.abi;
-      const address = networkData.address;
-      const contractInstance = new web3.eth.Contract(abi, address);
-      setContract(contractInstance);
-
-      const itemCount = await contractInstance.methods.foodItemCount().call();
-      setFoodItemCount(itemCount);
-
-      // Load existing food items
-      const items = [];
-      for (let i = 1; i <= itemCount; i++) {
-        const foodItem = await contractInstance.methods.foodItems(i).call();
-        items.push(foodItem);
+  const addProduct = async () => {
+    if (contract && productId && name && quantity > 0) {
+      try {
+        await contract.methods
+          .addProduct(productId, name, quantity)
+          .send({ from: account });
+        alert("Product added successfully!");
+      } catch (error) {
+        console.error(error);
       }
-      setFoodItems(items);
-    } else {
-      alert('Smart contract not deployed to the detected network.');
     }
   };
 
-  // Create a new food item
-  const createFoodItem = async () => {
-    if (foodItemName && contract) {
-      await contract.methods.createFoodItem(foodItemName).send({ from: account });
-      window.location.reload(); // Reload to reflect changes
-    } else {
-      alert('Please provide a valid name.');
+  const updateProductStatus = async () => {
+    if (contract && productId && status) {
+      try {
+        await contract.methods
+          .updateProductStatus(productId, status)
+          .send({ from: account });
+        alert("Status updated successfully!");
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
+
+  const getProductDetails = async () => {
+    if (contract && productId) {
+      try {
+        const details = await contract.methods
+          .getProductDetails(productId)
+          .call();
+        setProductDetails(details);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
+
+  const getStatusHistory = async () => {
+    if (contract && productId) {
+      try {
+        const history = await contract.methods
+          .getStatusHistory(productId)
+          .call();
+        setStatusHistory(history);
+      } catch (error) {
+        console.error(error);
+      }
     }
   };
 
   return (
     <div className="App">
       <h1>Minimal Food Supply Chain</h1>
-      <p>Account: {account}</p>
 
-      <h2>Create Food Item</h2>
-      <input
-        type="text"
-        placeholder="Enter food item name"
-        value={foodItemName}
-        onChange={(e) => setFoodItemName(e.target.value)}
-      />
-      <button onClick={createFoodItem}>Create</button>
+      <div>
+        <h2>Add Product</h2>
+        <input
+          type="text"
+          placeholder="Product ID"
+          value={productId}
+          onChange={(e) => setProductId(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Product Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <input
+          type="number"
+          placeholder="Quantity"
+          value={quantity}
+          onChange={(e) => setQuantity(parseInt(e.target.value))}
+        />
+        <button onClick={addProduct}>Add Product</button>
+      </div>
 
-      <h2>Food Items List</h2>
-      <ul>
-        {foodItems.map((item) => (
-          <li key={item.id}>
-            ID: {item.id}, Name: {item.name}, Owner: {item.owner}
-          </li>
-        ))}
-      </ul>
+      <div>
+        <h2>Update Product Status</h2>
+        <input
+          type="text"
+          placeholder="Product ID"
+          value={productId}
+          onChange={(e) => setProductId(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Status"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        />
+        <button onClick={updateProductStatus}>Update Status</button>
+      </div>
+
+      <div>
+        <h2>Get Product Details</h2>
+        <input
+          type="text"
+          placeholder="Product ID"
+          value={productId}
+          onChange={(e) => setProductId(e.target.value)}
+        />
+        <button onClick={getProductDetails}>Get Details</button>
+        {productDetails && (
+          <div>
+            <p>Product Name: {productDetails.name}</p>
+            <p>Quantity: {productDetails.quantity}</p>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2>Get Status History</h2>
+        <input
+          type="text"
+          placeholder="Product ID"
+          value={productId}
+          onChange={(e) => setProductId(e.target.value)}
+        />
+        <button onClick={getStatusHistory}>Get Status History</button>
+        <ul>
+          {statusHistory.map((stat, index) => (
+            <li key={index}>{stat}</li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
